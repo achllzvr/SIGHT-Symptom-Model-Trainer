@@ -1,1 +1,4 @@
 sight_dataset/*
+sight_env
+converter_env
+sight_model_tf

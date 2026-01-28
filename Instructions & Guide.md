@@ -15,7 +15,12 @@ Ensure you have the necessary libraries installed to run the training scripts.
 > *Required Libraries:* `tensorflow`, `numpy`, `pillow`
 * **Action:** Run the following command in your terminal:
     ```bash
-    pip install tensorflow numpy pillow
+    pip install tensorflow numpy pillow scipy
+    ```
+    ```bash
+    // For MacOS troubles.
+    pip install tensorflow-macos tensorflow-metal numpy pillow
+    // Make sure that python version is 3.11 because at the time of writing this, 3.14 does not support tflite.
     ```
 
 ### 2. Dataset Preparation

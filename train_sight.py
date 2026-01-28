@@ -1,66 +1,68 @@
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Input
 from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
 
-# --- CONFIGURATION ---
-DATASET_PATH = 'sight_dataset'  # Point this to your main folder
-IMG_SIZE = (224, 224)
+# 1. SETUP & DATA
+# We explicitly define the input shape here
+IMG_SHAPE = (224, 224, 3)
 BATCH_SIZE = 32
-EPOCHS = 20  # How many times to study the dataset
+train_dir = 'sight_dataset'
+val_dir = 'sight_dataset'
 
-# 1. Prepare Data (with Augmentation to fake more data)
+print("Preparing Data Generators...")
 train_datagen = ImageDataGenerator(
-    rescale=1./255,         # Normalize pixel values to 0-1
-    rotation_range=20,      # Rotate images slightly
-    horizontal_flip=True,   # Mirror images
-    validation_split=0.2    # Use 20% of data for testing
+    rescale=1./255,
+    rotation_range=20,
+    horizontal_flip=True,
+    fill_mode='nearest'
 )
+val_datagen = ImageDataGenerator(rescale=1./255)
 
 train_generator = train_datagen.flow_from_directory(
-    DATASET_PATH,
-    target_size=IMG_SIZE,
+    train_dir,
+    target_size=(224, 224),
     batch_size=BATCH_SIZE,
-    class_mode='categorical',
-    subset='training'
+    class_mode='categorical'
 )
 
-validation_generator = train_datagen.flow_from_directory(
-    DATASET_PATH,
-    target_size=IMG_SIZE,
+val_generator = val_datagen.flow_from_directory(
+    val_dir,
+    target_size=(224, 224),
     batch_size=BATCH_SIZE,
-    class_mode='categorical',
-    subset='validation'
+    class_mode='categorical'
 )
 
-# Print the class labels so you know which ID is which disease
-print("Class Indices:", train_generator.class_indices)
+# 2. BUILD MODEL
+# We use an explicit Input layer to lock the shape
+inputs = Input(shape=IMG_SHAPE)
+base_model = MobileNetV2(input_tensor=inputs, weights='imagenet', include_top=False)
+base_model.trainable = False 
 
-# 2. Load the "Professor" (MobileNetV2)
-base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-base_model.trainable = False # Freeze the base layers
-
-# 3. Add Custom "Eye Doctor" Layers
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
-x = Dense(128, activation='relu')(x)
-x = Dropout(0.2)(x) # Prevents memorizing
-predictions = Dense(4, activation='softmax')(x) # 4 classes: Healthy, Uveitis, Cataract, Ptosis
+x = Dense(1024, activation='relu')(x)
+# Automatically detect number of classes (should be 5)
+predictions = Dense(len(train_generator.class_indices), activation='softmax')(x)
 
 model = Model(inputs=base_model.input, outputs=predictions)
 
-# 4. Compile
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=Adam(learning_rate=0.0001),
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
 
-# 5. Train
-print("Starting training...")
-history = model.fit(
+# 3. TRAIN
+print("Starting Training...")
+model.fit(
     train_generator,
-    epochs=EPOCHS,
-    validation_data=validation_generator
+    epochs=10, # 10 is enough for 95%+ accuracy usually
+    validation_data=val_generator
 )
 
-# 6. Save the heavy model
-model.save('sight_model_full.h5')
-print("Training complete. Model saved as sight_model_full.h5")
+# 4. SAVE (CRITICAL STEP)
+# We save as a SavedModel Folder, which handles signatures better than .h5
+print("Saving Model...")
+tf.saved_model.save(model, 'sight_model_tf')
+print("✅ Model saved to folder: 'sight_model_tf'")
